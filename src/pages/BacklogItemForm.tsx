@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useProjects } from "@/context/ProjectContext";
-import { X, UserCircle } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -25,14 +26,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
-import { Collaborator } from "@/types";
 
 const formSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
   description: z.string().min(10, "Description must be at least 10 characters"),
   priority: z.enum(["low", "medium", "high"]),
   storyPoints: z.coerce.number().min(1).max(100),
-  assignedTo: z.string().optional(),
 });
 
 interface BacklogItemFormProps {
@@ -42,13 +41,9 @@ interface BacklogItemFormProps {
 }
 
 const BacklogItemForm: React.FC<BacklogItemFormProps> = ({ taskId, onClose, projectId }) => {
-  const { getTask, addTask, updateTask, getProject } = useProjects();
+  const { getTask, addTask, updateTask } = useProjects();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [projectOwner, setProjectOwner] = useState<{ username: string, email: string } | null>(null);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  
   const isEditMode = !!taskId;
   
   // Get the task to edit if in edit mode
@@ -61,7 +56,6 @@ const BacklogItemForm: React.FC<BacklogItemFormProps> = ({ taskId, onClose, proj
       description: taskToEdit?.description || "",
       priority: (taskToEdit?.priority as "low" | "medium" | "high") || "medium",
       storyPoints: taskToEdit?.storyPoints || 1,
-      assignedTo: taskToEdit?.assignedTo || "",
     },
   });
 
@@ -73,64 +67,9 @@ const BacklogItemForm: React.FC<BacklogItemFormProps> = ({ taskId, onClose, proj
         description: taskToEdit.description || "",
         priority: (taskToEdit.priority as "low" | "medium" | "high") || "medium",
         storyPoints: taskToEdit.storyPoints || 1,
-        assignedTo: taskToEdit.assignedTo || "",
       });
     }
   }, [taskToEdit, form]);
-
-  // Fetch collaborators when the component mounts
-  useEffect(() => {
-    if (projectId) {
-      fetchProjectCollaborators(projectId);
-    }
-  }, [projectId]);
-
-  const fetchProjectCollaborators = async (id: string) => {
-    setLoadingUsers(true);
-    try {
-      // Fetch collaborators
-      const { data: collabData, error: collabError } = await supabase
-        .from('collaborators')
-        .select(`
-          id,
-          role,
-          user_id,
-          users:user_id (id, username, email)
-        `)
-        .eq('project_id', id);
-        
-      if (collabError) throw collabError;
-      
-      const formattedCollaborators: Collaborator[] = (collabData || []).map(item => ({
-        id: item.id,
-        userId: item.user_id,
-        username: item.users ? (item.users as any).username || '' : '',
-        email: item.users ? (item.users as any).email || '' : '',
-        role: item.role,
-        createdAt: '',
-      }));
-      
-      setCollaborators(formattedCollaborators);
-      
-      // Fetch project owner information
-      const project = getProject(id);
-      if (project && project.ownerId) {
-        const { data: ownerData, error: ownerError } = await supabase
-          .from('users')
-          .select('username, email')
-          .eq('id', project.ownerId)
-          .single();
-          
-        if (!ownerError && ownerData) {
-          setProjectOwner(ownerData);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching collaborators:", error);
-    } finally {
-      setLoadingUsers(false);
-    }
-  };
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     setLoading(true);
@@ -148,7 +87,6 @@ const BacklogItemForm: React.FC<BacklogItemFormProps> = ({ taskId, onClose, proj
           description: data.description,
           priority: data.priority,
           storyPoints: data.storyPoints,
-          assignedTo: data.assignedTo,
         });
         toast.success("Backlog item updated successfully");
       } else {
@@ -172,7 +110,6 @@ const BacklogItemForm: React.FC<BacklogItemFormProps> = ({ taskId, onClose, proj
               project_id: projectId,
               priority: data.priority,
               story_points: data.storyPoints,
-              assign_to: data.assignedTo,
               user_id: user.id
             }]);
             
@@ -191,7 +128,6 @@ const BacklogItemForm: React.FC<BacklogItemFormProps> = ({ taskId, onClose, proj
             projectId: projectId,
             priority: data.priority,
             storyPoints: data.storyPoints,
-            assignedTo: data.assignedTo,
             sprintId: "",
           });
           toast.success("Backlog item created successfully");
@@ -299,65 +235,6 @@ const BacklogItemForm: React.FC<BacklogItemFormProps> = ({ taskId, onClose, proj
                 )}
               />
             </div>
-            
-            <FormField
-              control={form.control}
-              name="assignedTo"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-1">
-                    <UserCircle className="h-4 w-4" />
-                    Assigned To
-                  </FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                    disabled={loadingUsers}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select assignee" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
-                      
-                      {/* Project Owner */}
-                      {projectOwner && (
-                        <SelectItem value={projectOwner.username}>
-                          {projectOwner.username} (Owner)
-                        </SelectItem>
-                      )}
-                      
-                      {/* Divider */}
-                      {collaborators.length > 0 && (
-                        <SelectItem value="_divider" disabled>
-                          --- Collaborators ---
-                        </SelectItem>
-                      )}
-                      
-                      {/* Collaborators */}
-                      {collaborators.map(collab => (
-                        <SelectItem key={collab.id} value={collab.username}>
-                          {collab.username} ({collab.role})
-                        </SelectItem>
-                      ))}
-                      
-                      {/* Keep the current value if it's custom */}
-                      {field.value && 
-                       !collaborators.some(c => c.username === field.value) && 
-                       projectOwner?.username !== field.value && 
-                       field.value !== "" && (
-                        <SelectItem value={field.value}>
-                          {field.value} (Custom)
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
