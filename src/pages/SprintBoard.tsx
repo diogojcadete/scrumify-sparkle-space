@@ -2,12 +2,13 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProjects } from "@/context/ProjectContext";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
-import { Edit, Trash, CheckCircle, AlertTriangle, Plus } from "lucide-react";
+import { Edit, Trash, CheckCircle, AlertTriangle, Plus, UserCircle } from "lucide-react";
 import { toast } from "sonner";
 import TaskCard from "@/components/tasks/TaskCard";
 import EditTaskModal from "@/components/tasks/EditTaskModal";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { Collaborator } from "@/types";
 
 const SprintBoard: React.FC = () => {
   const { sprintId } = useParams<{ sprintId: string }>();
@@ -455,9 +456,65 @@ const NewTaskForm: React.FC<{
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "">("");
   const [assignedTo, setAssignedTo] = useState("");
   const [storyPoints, setStoryPoints] = useState<number | "">("");
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [projectOwner, setProjectOwner] = useState<{ username: string, email: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
-  const { addTask, getSprint } = useProjects();
+  const { addTask, getSprint, getProject } = useProjects();
   const sprint = getSprint(sprintId);
+  
+  useEffect(() => {
+    if (sprint && sprint.projectId) {
+      fetchProjectCollaborators(sprint.projectId);
+    }
+  }, [sprint]);
+  
+  const fetchProjectCollaborators = async (projectId: string) => {
+    setIsLoading(true);
+    try {
+      // Fetch collaborators
+      const { data: collabData, error: collabError } = await supabase
+        .from('collaborators')
+        .select(`
+          id,
+          role,
+          user_id,
+          users:user_id (id, username, email)
+        `)
+        .eq('project_id', projectId);
+        
+      if (collabError) throw collabError;
+      
+      const formattedCollaborators: Collaborator[] = (collabData || []).map(item => ({
+        id: item.id,
+        userId: item.user_id,
+        username: item.users ? (item.users as any).username || '' : '',
+        email: item.users ? (item.users as any).email || '' : '',
+        role: item.role,
+        createdAt: '',
+      }));
+      
+      setCollaborators(formattedCollaborators);
+      
+      // Fetch project owner information
+      const project = getProject(projectId);
+      if (project && project.ownerId) {
+        const { data: ownerData, error: ownerError } = await supabase
+          .from('users')
+          .select('username, email')
+          .eq('id', project.ownerId)
+          .single();
+          
+        if (!ownerError && ownerData) {
+          setProjectOwner(ownerData);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching collaborators:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -570,16 +627,55 @@ const NewTaskForm: React.FC<{
         </div>
         
         <div className="mb-6">
-          <label className="block mb-2 text-sm">
+          <label className="block mb-2 text-sm flex items-center gap-1">
+            <UserCircle className="h-4 w-4" />
             Assigned To
           </label>
-          <input
-            type="text"
+          <select
             value={assignedTo}
             onChange={(e) => setAssignedTo(e.target.value)}
             className="scrum-input"
-            placeholder="e.g. John Doe"
-          />
+            disabled={isLoading}
+          >
+            <option value="">Unassigned</option>
+            
+            {/* Project Owner */}
+            {projectOwner && (
+              <option value={projectOwner.username}>
+                {projectOwner.username} (Owner)
+              </option>
+            )}
+            
+            {/* Collaborators */}
+            {collaborators.length > 0 && (
+              <>
+                <option disabled>--- Collaborators ---</option>
+                {collaborators.map(collab => (
+                  <option key={collab.id} value={collab.username}>
+                    {collab.username} ({collab.role})
+                  </option>
+                ))}
+              </>
+            )}
+            
+            {/* Custom input - allow any text */}
+            <option disabled>--- Custom ---</option>
+            {assignedTo && !collaborators.some(c => c.username === assignedTo) && 
+              projectOwner?.username !== assignedTo && (
+              <option value={assignedTo}>{assignedTo} (Custom)</option>
+            )}
+          </select>
+          
+          {/* Allow custom entry if needed */}
+          {assignedTo === "custom" && (
+            <input
+              type="text"
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+              className="scrum-input mt-2"
+              placeholder="Enter name or email"
+            />
+          )}
         </div>
         
         <div className="flex justify-end gap-2">
