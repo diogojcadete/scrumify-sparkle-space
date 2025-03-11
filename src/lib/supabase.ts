@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import { Collaborator, BurndownData as BurndownDataType } from '@/types';
 
@@ -278,6 +279,7 @@ export const fetchCollaborativeSprintTasks = async (sprintId: string) => {
 // New helper to fetch backlog tasks for a project as a collaborator
 export const fetchCollaborativeBacklogTasks = async (projectId: string) => {
   try {
+    console.log('Fetching collaborative backlog tasks for project:', projectId);
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
@@ -285,8 +287,12 @@ export const fetchCollaborativeBacklogTasks = async (projectId: string) => {
       .is('sprint_id', null)
       .eq('status', 'backlog');
       
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching backlog tasks:', error);
+      throw error;
+    }
     
+    console.log('Backlog tasks fetched:', data);
     return data || [];
   } catch (error) {
     console.error('Error fetching collaborative backlog tasks:', error);

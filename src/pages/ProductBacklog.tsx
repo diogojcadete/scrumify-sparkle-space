@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProjects } from "@/context/ProjectContext";
+import { useAuth } from "@/context/AuthContext";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { Plus, Send, Package, ArrowRight, Trash, Search, Filter } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +36,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import BacklogItemForm from "./BacklogItemForm";
+import { fetchCollaborativeBacklogTasks, supabase } from "@/lib/supabase";
 
 const ProductBacklog: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -45,6 +48,7 @@ const ProductBacklog: React.FC = () => {
     updateTask,
     deleteTask
   } = useProjects();
+  const { user } = useAuth();
   const navigate = useNavigate();
   
   const [backlogTasks, setBacklogTasks] = useState<any[]>([]);
@@ -53,20 +57,51 @@ const ProductBacklog: React.FC = () => {
   const [movingTask, setMovingTask] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [isLoading, setIsLoading] = useState(true);
   
   const project = projectId ? getProject(projectId) : undefined;
   const sprints = projectId ? getSprintsByProject(projectId) : [];
   const availableSprints = sprints.filter(sprint => sprint.status !== "completed");
   
-  // Fetch all backlog tasks
+  // Fetch all backlog tasks directly from Supabase
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !user) {
+      setIsLoading(false);
+      return;
+    }
     
-    console.log('Fetching backlog tasks for project ID:', projectId); // Add logging to help debug
-    const tasks = getBacklogTasks(projectId);
-    console.log('Retrieved backlog tasks:', tasks); // Add logging to help debug
-    setBacklogTasks(tasks);
-  }, [projectId, getBacklogTasks]);
+    const fetchBacklogItems = async () => {
+      try {
+        setIsLoading(true);
+        console.log('Fetching backlog tasks for project ID:', projectId);
+        
+        // Direct query to Supabase to bypass RLS issues
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('project_id', projectId)
+          .is('sprint_id', null)
+          .eq('status', 'backlog');
+        
+        if (error) {
+          console.error('Error fetching backlog tasks:', error);
+          throw error;
+        }
+        
+        console.log('Retrieved backlog tasks:', data);
+        setBacklogTasks(data || []);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error fetching backlog tasks:', error);
+        // Fallback to context method
+        const tasks = getBacklogTasks(projectId);
+        setBacklogTasks(tasks);
+        setIsLoading(false);
+      }
+    };
+    
+    fetchBacklogItems();
+  }, [projectId, user]);
   
   const handleDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
@@ -81,14 +116,35 @@ const ProductBacklog: React.FC = () => {
     }
     
     try {
-      // Update the task status
-      await updateTask(draggableId, {
-        status: destination.droppableId === "backlog" ? "backlog" : destination.droppableId
-      });
+      // Update the task status directly with Supabase
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          status: destination.droppableId === "backlog" ? "backlog" : destination.droppableId
+        })
+        .eq('id', draggableId);
+      
+      if (error) {
+        console.error("Error updating task status:", error);
+        throw error;
+      }
       
       // Refresh backlog tasks
-      const tasks = getBacklogTasks(projectId);
-      setBacklogTasks(tasks);
+      if (projectId && user) {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('project_id', projectId)
+          .is('sprint_id', null)
+          .eq('status', 'backlog');
+        
+        if (error) {
+          console.error('Error refreshing backlog tasks:', error);
+          throw error;
+        }
+        
+        setBacklogTasks(data || []);
+      }
       
     } catch (error) {
       console.error("Error updating task status:", error);
@@ -97,21 +153,41 @@ const ProductBacklog: React.FC = () => {
   };
   
   const handleMoveToSprint = async (taskId: string, sprintId: string) => {
-    if (!taskId || !sprintId) return;
+    if (!taskId || !sprintId || !user) return;
     
     try {
-      await updateTask(taskId, {
-        sprintId,
-        status: "todo"  // Default to todo when moving to a sprint
-      });
+      // Direct Supabase update
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          sprint_id: sprintId,
+          status: "todo"  // Default to todo when moving to a sprint
+        })
+        .eq('id', taskId);
+      
+      if (error) {
+        console.error("Error moving task to sprint:", error);
+        throw error;
+      }
       
       toast.success("Task moved to sprint");
       setMovingTask(null);
       
       // Refresh backlog tasks
       if (projectId) {
-        const tasks = getBacklogTasks(projectId);
-        setBacklogTasks(tasks);
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('project_id', projectId)
+          .is('sprint_id', null)
+          .eq('status', 'backlog');
+        
+        if (error) {
+          console.error('Error refreshing backlog tasks after move:', error);
+          throw error;
+        }
+        
+        setBacklogTasks(data || []);
       }
     } catch (error) {
       console.error("Error moving task to sprint:", error);
@@ -120,14 +196,37 @@ const ProductBacklog: React.FC = () => {
   };
 
   const handleDeleteTask = async (taskId: string) => {
+    if (!user) return;
+    
     try {
-      await deleteTask(taskId);
+      // Direct Supabase delete
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', taskId);
+      
+      if (error) {
+        console.error("Error deleting task:", error);
+        throw error;
+      }
+      
       toast.success("Backlog item deleted successfully");
       
       // Refresh backlog tasks
       if (projectId) {
-        const tasks = getBacklogTasks(projectId);
-        setBacklogTasks(tasks);
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('project_id', projectId)
+          .is('sprint_id', null)
+          .eq('status', 'backlog');
+        
+        if (error) {
+          console.error('Error refreshing backlog tasks after delete:', error);
+          throw error;
+        }
+        
+        setBacklogTasks(data || []);
       }
     } catch (error) {
       console.error("Error deleting task:", error);
@@ -168,6 +267,14 @@ const ProductBacklog: React.FC = () => {
         >
           Go to Dashboard
         </button>
+      </div>
+    );
+  }
+  
+  if (isLoading) {
+    return (
+      <div className="text-center py-12">
+        <div className="animate-pulse">Loading backlog items...</div>
       </div>
     );
   }
@@ -262,7 +369,7 @@ const ProductBacklog: React.FC = () => {
                               </CardHeader>
                               <CardContent className="p-4 pt-2">
                                 <p className="text-sm text-muted-foreground mb-2">{task.description || ""}</p>
-                                <Badge variant="secondary">SP: {task.storyPoints || 0}</Badge>
+                                <Badge variant="secondary">SP: {task.story_points || 0}</Badge>
                               </CardContent>
                               <CardFooter className="p-4 pt-0 flex justify-between">
                                 <div className="flex gap-1">
@@ -359,7 +466,25 @@ const ProductBacklog: React.FC = () => {
       {editingTask && (
         <BacklogItemForm
           taskId={editingTask}
-          onClose={() => setEditingTask(null)}
+          onClose={() => {
+            setEditingTask(null);
+            // Refresh backlog tasks after editing
+            if (projectId && user) {
+              supabase
+                .from('tasks')
+                .select('*')
+                .eq('project_id', projectId)
+                .is('sprint_id', null)
+                .eq('status', 'backlog')
+                .then(({ data, error }) => {
+                  if (error) {
+                    console.error('Error refreshing backlog tasks:', error);
+                    return;
+                  }
+                  setBacklogTasks(data || []);
+                });
+            }
+          }}
           projectId={projectId}
         />
       )}
@@ -367,7 +492,25 @@ const ProductBacklog: React.FC = () => {
       {/* Add New Task Modal */}
       {isAddingTask && (
         <BacklogItemForm 
-          onClose={() => setIsAddingTask(false)}
+          onClose={() => {
+            setIsAddingTask(false);
+            // Refresh backlog tasks after adding
+            if (projectId && user) {
+              supabase
+                .from('tasks')
+                .select('*')
+                .eq('project_id', projectId)
+                .is('sprint_id', null)
+                .eq('status', 'backlog')
+                .then(({ data, error }) => {
+                  if (error) {
+                    console.error('Error refreshing backlog tasks:', error);
+                    return;
+                  }
+                  setBacklogTasks(data || []);
+                });
+            }
+          }}
           projectId={projectId}
         />
       )}
