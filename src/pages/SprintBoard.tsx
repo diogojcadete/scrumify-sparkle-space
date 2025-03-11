@@ -7,10 +7,12 @@ import { toast } from "sonner";
 import TaskCard from "@/components/tasks/TaskCard";
 import EditTaskModal from "@/components/tasks/EditTaskModal";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 
 const SprintBoard: React.FC = () => {
   const { sprintId } = useParams<{ sprintId: string }>();
   const { updateSprint, updateTask } = useProjects();
+  const { user } = useAuth();
   const navigate = useNavigate();
   
   const [sprint, setSprint] = useState<any>(null);
@@ -131,9 +133,26 @@ const SprintBoard: React.FC = () => {
       });
       
       try {
-        await updateTask(draggableId, {
-          status: destination.droppableId
-        });
+        const { error } = await supabase
+          .from('tasks')
+          .update({ status: destination.droppableId })
+          .eq('id', draggableId);
+          
+        if (error) throw error;
+        
+        setTasks(prevTasks => 
+          prevTasks.map(task => 
+            task.id === draggableId ? { ...task, status: destination.droppableId } : task
+          )
+        );
+        
+        try {
+          await updateTask(draggableId, {
+            status: destination.droppableId
+          });
+        } catch (contextError) {
+          console.log("Context update failed but Supabase update succeeded:", contextError);
+        }
         
         if (destination.droppableId === "done") {
           const allTasks = tasks;
@@ -151,6 +170,18 @@ const SprintBoard: React.FC = () => {
       } catch (error) {
         console.error("Error updating task status:", error);
         toast.error("Failed to update task status");
+        
+        setColumns({
+          ...columns,
+          [source.droppableId]: {
+            ...sourceColumn,
+            taskIds: Array.from(sourceColumn.taskIds),
+          },
+          [destination.droppableId]: {
+            ...destColumn,
+            taskIds: Array.from(destColumn.taskIds).filter(id => id !== draggableId),
+          },
+        });
       }
     }
   };

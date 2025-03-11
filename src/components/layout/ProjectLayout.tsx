@@ -94,8 +94,8 @@ const ProjectLayout: React.FC = () => {
   // Check if the user can edit the project (admin or owner)
   const canEditProject = isOwner || userRole === 'admin';
   
-  // Check if the user can access backlog (admin or owner only)
-  const canAccessBacklog = isOwner || userRole === 'admin';
+  // Check if the user can access backlog (admin, member, or owner)
+  const canAccessBacklog = isOwner || userRole === 'admin' || userRole === 'member';
   
   // Check if user can create/edit sprints (member, admin or owner)
   const canModifySprints = isOwner || userRole === 'admin' || userRole === 'member';
