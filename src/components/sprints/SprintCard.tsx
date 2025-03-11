@@ -2,24 +2,19 @@
 import React from "react";
 import { format } from "date-fns";
 import { Sprint } from "@/types";
-import { CalendarDays, Edit, ArrowRight } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
+import { CalendarDays, Edit } from "lucide-react";
 
 interface SprintCardProps {
   sprint: Sprint;
   onEdit?: () => void;
   onViewBoard?: () => void;
-  isOwnerOrAdmin?: boolean;
 }
 
 const SprintCard: React.FC<SprintCardProps> = ({ 
   sprint, 
   onEdit = () => {}, 
-  onViewBoard = () => {},
-  isOwnerOrAdmin = true
+  onViewBoard = () => {}
 }) => {
-  const { user } = useAuth();
-  
   const getStatusColor = () => {
     switch (sprint.status) {
       case "completed":
@@ -52,22 +47,19 @@ const SprintCard: React.FC<SprintCardProps> = ({
       </div>
       
       <div className="flex items-center justify-between gap-2 mt-4">
-        {isOwnerOrAdmin && (
-          <button
-            onClick={onEdit}
-            className="scrum-button-secondary flex items-center gap-1"
-          >
-            <Edit className="h-4 w-4" />
-            <span>Edit</span>
-          </button>
-        )}
+        <button
+          onClick={onEdit}
+          className="scrum-button-secondary flex items-center gap-1"
+        >
+          <Edit className="h-4 w-4" />
+          <span>Edit</span>
+        </button>
         
         <button
           onClick={onViewBoard}
-          className={`scrum-button flex items-center gap-1 ${!isOwnerOrAdmin ? 'w-full' : ''}`}
+          className="scrum-button"
         >
-          <span>View Board</span>
-          <ArrowRight className="h-4 w-4" />
+          View Board
         </button>
       </div>
     </div>
