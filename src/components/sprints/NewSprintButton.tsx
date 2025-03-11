@@ -18,6 +18,7 @@ const NewSprintButton: React.FC<NewSprintButtonProps> = ({ projectId }) => {
   const [endDate, setEndDate] = useState("");
   const { addSprint } = useProjects();
   const { user } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +44,19 @@ const NewSprintButton: React.FC<NewSprintButtonProps> = ({ projectId }) => {
     }
     
     try {
-      // Direct Supabase insert to bypass RLS issues
+      setIsSubmitting(true);
+      
+      console.log("Creating sprint with data:", {
+        title,
+        description,
+        project_id: projectId,
+        user_id: user.id,
+        start_date: startDate,
+        end_date: endDate,
+        status: "in-progress"
+      });
+      
+      // Direct Supabase insert with clearer error handling
       const { data, error } = await supabase
         .from('sprints')
         .insert({
@@ -55,12 +68,12 @@ const NewSprintButton: React.FC<NewSprintButtonProps> = ({ projectId }) => {
           end_date: endDate,
           status: "in-progress" // Always set to in-progress
         })
-        .select()
-        .single();
+        .select();
       
       if (error) {
         console.error("Sprint creation error:", error);
-        throw error;
+        toast.error(`Failed to create sprint: ${error.message}`);
+        return;
       }
       
       toast.success("Sprint created successfully");
@@ -72,9 +85,11 @@ const NewSprintButton: React.FC<NewSprintButtonProps> = ({ projectId }) => {
       
       // Refresh the UI
       window.location.reload();
-    } catch (error) {
-      toast.error("Failed to create sprint");
-      console.error(error);
+    } catch (error: any) {
+      console.error("Sprint creation error:", error);
+      toast.error(`Failed to create sprint: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -168,8 +183,9 @@ const NewSprintButton: React.FC<NewSprintButtonProps> = ({ projectId }) => {
                 <button
                   type="submit"
                   className="scrum-button"
+                  disabled={isSubmitting}
                 >
-                  Create Sprint
+                  {isSubmitting ? "Creating..." : "Create Sprint"}
                 </button>
               </div>
             </form>

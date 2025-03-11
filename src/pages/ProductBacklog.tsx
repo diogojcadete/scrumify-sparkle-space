@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProjects } from "@/context/ProjectContext";
@@ -36,17 +35,13 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import BacklogItemForm from "./BacklogItemForm";
-import { fetchCollaborativeBacklogTasks, supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 const ProductBacklog: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const { 
     getProject, 
-    getSprintsByProject, 
-    getBacklogTasks, 
-    addTask, 
-    updateTask,
-    deleteTask
+    getSprintsByProject
   } = useProjects();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -54,7 +49,6 @@ const ProductBacklog: React.FC = () => {
   const [backlogTasks, setBacklogTasks] = useState<any[]>([]);
   const [editingTask, setEditingTask] = useState<string | null>(null);
   const [isAddingTask, setIsAddingTask] = useState(false);
-  const [movingTask, setMovingTask] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [isLoading, setIsLoading] = useState(true);
@@ -63,7 +57,7 @@ const ProductBacklog: React.FC = () => {
   const sprints = projectId ? getSprintsByProject(projectId) : [];
   const availableSprints = sprints.filter(sprint => sprint.status !== "completed");
   
-  // Fetch all backlog tasks directly from Supabase
+  // Fetch all backlog tasks directly from Supabase for the current project
   useEffect(() => {
     if (!projectId || !user) {
       setIsLoading(false);
@@ -79,7 +73,7 @@ const ProductBacklog: React.FC = () => {
         const { data, error } = await supabase
           .from('tasks')
           .select('*')
-          .eq('project_id', projectId)
+          .eq('project_id', projectId) // Ensure we only get tasks for this project
           .is('sprint_id', null)
           .eq('status', 'backlog');
         
@@ -93,9 +87,7 @@ const ProductBacklog: React.FC = () => {
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching backlog tasks:', error);
-        // Fallback to context method
-        const tasks = getBacklogTasks(projectId);
-        setBacklogTasks(tasks);
+        setBacklogTasks([]);
         setIsLoading(false);
       }
     };
@@ -171,7 +163,6 @@ const ProductBacklog: React.FC = () => {
       }
       
       toast.success("Task moved to sprint");
-      setMovingTask(null);
       
       // Refresh backlog tasks
       if (projectId) {
