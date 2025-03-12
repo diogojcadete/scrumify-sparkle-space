@@ -198,13 +198,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user) return;
 
     try {
-      const data = await handleApiRequest(
-        () => supabase
-          .from('tasks')
-          .select('*')
-          .eq('sprint_id', sprintId),
-        `Error fetching tasks for sprint ${sprintId}`
-      );
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('sprint_id', sprintId);
+
+      if (error) throw error;
 
       if (data) {
         const formattedTasks: Task[] = data.map(task => ({
@@ -235,15 +234,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user) return;
 
     try {
-      const data = await handleApiRequest(
-        () => supabase
-          .from('tasks')
-          .select('*')
-          .is('sprint_id', null)
-          .eq('project_id', projectId)
-          .eq('status', 'backlog'),
-        `Error fetching backlog tasks for project ${projectId}`
-      );
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .is('sprint_id', null)
+        .eq('project_id', projectId)
+        .eq('status', 'backlog');
+
+      if (error) throw error;
 
       if (data) {
         const formattedTasks: Task[] = data.map(task => ({
