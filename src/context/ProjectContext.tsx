@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { Project, Sprint, Task, BurndownData } from "@/types";
 import { useAuth } from "./AuthContext";
 import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 interface ProjectContextType {
   projects: Project[];
@@ -59,6 +60,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [burndownData, setBurndownData] = useState<Record<string, BurndownData[]>>({});
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -72,19 +74,59 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [user]);
 
-  const fetchProjects = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select(`*, owner:owner_id (username, email)`)
-        .eq('owner_id', user.id);
-
-      if (error) {
-        console.error('Error fetching projects:', error);
-        return;
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  
+  const handleApiRequest = async <T,>(
+    requestFn: () => Promise<{ data: T | null; error: any }>,
+    errorMessage: string,
+    retries = 3
+  ): Promise<T | null> => {
+    let attempt = 0;
+    
+    while (attempt < retries) {
+      try {
+        const { data, error } = await requestFn();
+        
+        if (error) {
+          console.error(`${errorMessage}:`, error);
+          if (error.code !== "NETWORK_ERROR" && !error.message?.includes("Failed to fetch")) {
+            throw error;
+          }
+          
+          attempt++;
+          await delay(Math.min(1000 * 2 ** attempt, 8000));
+          continue;
+        }
+        
+        return data;
+      } catch (error) {
+        console.error(`${errorMessage}:`, error);
+        attempt++;
+        
+        if (attempt >= retries) {
+          return null;
+        }
+        
+        await delay(Math.min(1000 * 2 ** attempt, 8000));
       }
+    }
+    
+    return null;
+  };
+
+  const fetchProjects = async () => {
+    if (!user || isLoading) return;
+    
+    setIsLoading(true);
+    
+    try {
+      const data = await handleApiRequest(
+        () => supabase
+          .from('projects')
+          .select(`*, owner:owner_id (username, email)`)
+          .eq('owner_id', user.id),
+        'Error fetching projects'
+      );
 
       if (data) {
         const formattedProjects: Project[] = data.map(project => ({
@@ -101,13 +143,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         setProjects(formattedProjects);
         
-        formattedProjects.forEach(project => {
-          fetchSprints(project.id);
-          fetchBacklogTasks(project.id);
-        });
+        for (const project of formattedProjects) {
+          await fetchSprints(project.id);
+          await delay(300);
+          await fetchBacklogTasks(project.id);
+          await delay(300);
+        }
       }
     } catch (error) {
       console.error('Error fetching projects:', error);
+      toast.error("Failed to load projects. Please try refreshing the page.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -115,16 +162,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .from('sprints')
-        .select('*')
-        .eq('project_id', projectId)
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error fetching sprints:', error);
-        return;
-      }
+      const data = await handleApiRequest(
+        () => supabase
+          .from('sprints')
+          .select('*')
+          .eq('project_id', projectId),
+        `Error fetching sprints for project ${projectId}`
+      );
 
       if (data) {
         const formattedSprints: Sprint[] = data.map(sprint => ({
@@ -142,9 +186,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return [...filtered, ...formattedSprints];
         });
         
-        formattedSprints.forEach(sprint => {
-          fetchTasksBySprint(sprint.id);
-        });
+        for (const sprint of formattedSprints) {
+          await fetchTasksBySprint(sprint.id);
+          await delay(300);
+        }
       }
     } catch (error) {
       console.error('Error fetching sprints:', error);
@@ -155,25 +200,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('sprint_id', sprintId)
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error fetching tasks for sprint:', error);
-        return;
-      }
+      const data = await handleApiRequest(
+        () => supabase
+          .from('tasks')
+          .select('*')
+          .eq('sprint_id', sprintId),
+        `Error fetching tasks for sprint ${sprintId}`
+      );
 
       if (data) {
-        // Map the database status values to ensure they are consistent
         const formattedTasks: Task[] = data.map(task => ({
           id: task.id,
           title: task.title,
           description: task.description,
           sprintId: task.sprint_id || '',
-          // Ensure we preserve the exact status from the database
           status: task.status,
           assignedTo: task.assign_to,
           storyPoints: task.story_points,
@@ -182,8 +222,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           updatedAt: task.created_at,
           projectId: task.project_id
         }));
-
-        console.log('Fetched tasks with statuses:', formattedTasks.map(t => ({ id: t.id, status: t.status })));
 
         setTasks(prev => {
           const filtered = prev.filter(t => t.sprintId !== sprintId);
@@ -199,21 +237,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .is('sprint_id', null)
-        .eq('project_id', projectId)
-        .eq('status', 'backlog')
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error fetching backlog tasks:', error);
-        return;
-      }
+      const data = await handleApiRequest(
+        () => supabase
+          .from('tasks')
+          .select('*')
+          .is('sprint_id', null)
+          .eq('project_id', projectId)
+          .eq('status', 'backlog'),
+        `Error fetching backlog tasks for project ${projectId}`
+      );
 
       if (data) {
-        console.log('Fetched backlog tasks:', data);
         const formattedTasks: Task[] = data.map(task => ({
           id: task.id,
           title: task.title,
@@ -706,33 +740,30 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     burndownData[projectId] || generateDefaultBurndownData();
 
   const fetchCollaborativeProjects = async () => {
-    if (!user) return;
-
+    if (!user || isLoading) return;
+    
     try {
-      const { data, error } = await supabase
-        .from('collaborators')
-        .select(`
-          role,
-          projects:project_id (
-            id, 
-            title, 
-            description, 
-            end_goal, 
-            created_at, 
-            updated_at,
-            owner_id,
-            owner:owner_id (username, email)
-          )
-        `)
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error fetching collaborative projects:', error);
-        return;
-      }
+      const data = await handleApiRequest(
+        () => supabase
+          .from('collaborators')
+          .select(`
+            role,
+            projects:project_id (
+              id, 
+              title, 
+              description, 
+              end_goal, 
+              created_at, 
+              updated_at,
+              owner_id,
+              owner:owner_id (username, email)
+            )
+          `)
+          .eq('user_id', user.id),
+        'Error fetching collaborative projects'
+      );
 
       if (data && data.length > 0) {
-        // Extract the collaborative projects and format them
         const collaborativeProjects = data
           .filter(item => item.projects)
           .map(item => {
@@ -751,22 +782,22 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             };
           });
 
-        // Add collaborative projects to the projects state
         setProjects(prev => {
-          // Filter out any duplicates (in case user is both owner and collaborator)
           const existingIds = prev.map(p => p.id);
           const newCollaborativeProjects = collaborativeProjects.filter(p => !existingIds.includes(p.id));
           return [...prev, ...newCollaborativeProjects];
         });
 
-        // Fetch sprints and backlog tasks for collaborative projects
-        collaborativeProjects.forEach(project => {
-          fetchSprints(project.id);
-          fetchBacklogTasks(project.id);
-        });
+        for (const project of collaborativeProjects) {
+          await fetchSprints(project.id);
+          await delay(300);
+          await fetchBacklogTasks(project.id);
+          await delay(300);
+        }
       }
     } catch (error) {
       console.error('Error fetching collaborative projects:', error);
+      toast.error("Failed to load collaborative projects. Please try refreshing the page.");
     }
   };
 
