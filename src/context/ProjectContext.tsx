@@ -120,13 +120,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsLoading(true);
     
     try {
-      const data = await handleApiRequest(
-        () => supabase
-          .from('projects')
-          .select(`*, owner:owner_id (username, email)`)
-          .eq('owner_id', user.id),
-        'Error fetching projects'
-      );
+      const { data, error } = await supabase
+        .from('projects')
+        .select(`*, owner:owner_id (username, email)`)
+        .eq('owner_id', user.id);
+
+      if (error) throw error;
 
       if (data) {
         const formattedProjects: Project[] = data.map(project => ({
@@ -162,13 +161,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user) return;
 
     try {
-      const data = await handleApiRequest(
-        () => supabase
-          .from('sprints')
-          .select('*')
-          .eq('project_id', projectId),
-        `Error fetching sprints for project ${projectId}`
-      );
+      const { data, error } = await supabase
+        .from('sprints')
+        .select('*')
+        .eq('project_id', projectId);
+
+      if (error) throw error;
 
       if (data) {
         const formattedSprints: Sprint[] = data.map(sprint => ({
@@ -743,25 +741,24 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user || isLoading) return;
     
     try {
-      const data = await handleApiRequest(
-        () => supabase
-          .from('collaborators')
-          .select(`
-            role,
-            projects:project_id (
-              id, 
-              title, 
-              description, 
-              end_goal, 
-              created_at, 
-              updated_at,
-              owner_id,
-              owner:owner_id (username, email)
-            )
-          `)
-          .eq('user_id', user.id),
-        'Error fetching collaborative projects'
-      );
+      const { data, error } = await supabase
+        .from('collaborators')
+        .select(`
+          role,
+          projects:project_id (
+            id, 
+            title, 
+            description, 
+            end_goal, 
+            created_at, 
+            updated_at,
+            owner_id,
+            owner:owner_id (username, email)
+          )
+        `)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
 
       if (data && data.length > 0) {
         const collaborativeProjects = data

@@ -1,6 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { User } from "@/types";
+import { User, ProjectRole } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -8,6 +7,8 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isOwner: boolean;
+  userRole: ProjectRole | null;
   login: (emailOrUsername: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -17,6 +18,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  isOwner: false,
+  userRole: null,
   login: async () => {},
   register: async () => {},
   logout: () => {},
@@ -27,6 +30,8 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
+  const [userRole, setUserRole] = useState<ProjectRole | null>(null);
 
   useEffect(() => {
     // Check for saved user in localStorage
@@ -125,6 +130,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         isAuthenticated: !!user,
         isLoading,
+        isOwner,
+        userRole,
         login,
         register,
         logout,

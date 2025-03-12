@@ -39,10 +39,7 @@ import { supabase } from "@/lib/supabase";
 
 const ProductBacklog: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
-  const { 
-    getProject, 
-    getSprintsByProject
-  } = useProjects();
+  const { getProject, getSprintsByProject } = useProjects();
   const { user, isOwner, userRole } = useAuth();
   const navigate = useNavigate();
   
