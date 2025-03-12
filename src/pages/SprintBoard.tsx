@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProjects } from "@/context/ProjectContext";
@@ -239,6 +238,11 @@ const SprintBoard: React.FC = () => {
   };
   
   const handleCompleteSprint = async () => {
+    if (!isOwner && userRole !== 'admin') {
+      toast.error("Only project owners and admins can complete sprints");
+      return;
+    }
+
     if (!allTasksCompleted) {
       setIsCompleteDialogOpen(true);
       return;

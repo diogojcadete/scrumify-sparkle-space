@@ -43,7 +43,7 @@ const ProductBacklog: React.FC = () => {
     getProject, 
     getSprintsByProject
   } = useProjects();
-  const { user } = useAuth();
+  const { user, isOwner, userRole } = useAuth();
   const navigate = useNavigate();
   
   const [backlogTasks, setBacklogTasks] = useState<any[]>([]);
@@ -57,7 +57,8 @@ const ProductBacklog: React.FC = () => {
   const sprints = projectId ? getSprintsByProject(projectId) : [];
   const availableSprints = sprints.filter(sprint => sprint.status !== "completed");
   
-  // Fetch all backlog tasks directly from Supabase for the current project
+  const canAddTasks = isOwner || userRole === 'admin';
+
   useEffect(() => {
     if (!projectId || !user) {
       setIsLoading(false);
@@ -69,11 +70,10 @@ const ProductBacklog: React.FC = () => {
         setIsLoading(true);
         console.log('Fetching backlog tasks for project ID:', projectId);
         
-        // Direct query to Supabase to bypass RLS issues
         const { data, error } = await supabase
           .from('tasks')
           .select('*')
-          .eq('project_id', projectId) // Ensure we only get tasks for this project
+          .eq('project_id', projectId)
           .is('sprint_id', null)
           .eq('status', 'backlog');
         
@@ -108,7 +108,6 @@ const ProductBacklog: React.FC = () => {
     }
     
     try {
-      // Update the task status directly with Supabase
       const { error } = await supabase
         .from('tasks')
         .update({
@@ -121,7 +120,6 @@ const ProductBacklog: React.FC = () => {
         throw error;
       }
       
-      // Refresh backlog tasks
       if (projectId && user) {
         const { data, error } = await supabase
           .from('tasks')
@@ -148,12 +146,11 @@ const ProductBacklog: React.FC = () => {
     if (!taskId || !sprintId || !user) return;
     
     try {
-      // Direct Supabase update
       const { error } = await supabase
         .from('tasks')
         .update({
           sprint_id: sprintId,
-          status: "todo"  // Default to todo when moving to a sprint
+          status: "todo"
         })
         .eq('id', taskId);
       
@@ -164,7 +161,6 @@ const ProductBacklog: React.FC = () => {
       
       toast.success("Task moved to sprint");
       
-      // Refresh backlog tasks
       if (projectId) {
         const { data, error } = await supabase
           .from('tasks')
@@ -190,7 +186,6 @@ const ProductBacklog: React.FC = () => {
     if (!user) return;
     
     try {
-      // Direct Supabase delete
       const { error } = await supabase
         .from('tasks')
         .delete()
@@ -203,7 +198,6 @@ const ProductBacklog: React.FC = () => {
       
       toast.success("Backlog item deleted successfully");
       
-      // Refresh backlog tasks
       if (projectId) {
         const { data, error } = await supabase
           .from('tasks')
@@ -225,7 +219,6 @@ const ProductBacklog: React.FC = () => {
     }
   };
 
-  // Filter backlog tasks by search query and priority
   const filteredBacklogTasks = backlogTasks
     .filter(task => 
       task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -276,17 +269,19 @@ const ProductBacklog: React.FC = () => {
         <div>
           <h2 className="text-2xl font-bold">Product Backlog</h2>
           <p className="text-scrum-text-secondary">
-            Manage your project's backlog items and move them to sprints
+            Manage your project's backlog items
           </p>
         </div>
         
-        <Button
-          onClick={() => setIsAddingTask(true)}
-          className="flex items-center gap-1"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add Backlog Item</span>
-        </Button>
+        {canAddTasks && (
+          <Button
+            onClick={() => setIsAddingTask(true)}
+            className="flex items-center gap-1"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Backlog Item</span>
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -453,13 +448,11 @@ const ProductBacklog: React.FC = () => {
         </div>
       </DragDropContext>
       
-      {/* Edit Task Modal */}
       {editingTask && (
         <BacklogItemForm
           taskId={editingTask}
           onClose={() => {
             setEditingTask(null);
-            // Refresh backlog tasks after editing
             if (projectId && user) {
               supabase
                 .from('tasks')
@@ -480,12 +473,10 @@ const ProductBacklog: React.FC = () => {
         />
       )}
       
-      {/* Add New Task Modal */}
       {isAddingTask && (
         <BacklogItemForm 
           onClose={() => {
             setIsAddingTask(false);
-            // Refresh backlog tasks after adding
             if (projectId && user) {
               supabase
                 .from('tasks')
