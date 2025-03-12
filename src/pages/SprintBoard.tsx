@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProjects } from "@/context/ProjectContext";
@@ -39,15 +40,25 @@ const SprintBoard: React.FC = () => {
       if (!sprintId) return;
       
       try {
+        console.log("Fetching sprint data for sprint ID:", sprintId);
+        
         const { data: sprintData, error: sprintError } = await supabase
           .from('sprints')
           .select('*')
           .eq('id', sprintId)
           .single();
           
-        if (sprintError) throw sprintError;
-        if (!sprintData) throw new Error('Sprint not found');
+        if (sprintError) {
+          console.error("Error fetching sprint:", sprintError);
+          throw sprintError;
+        }
         
+        if (!sprintData) {
+          console.error("Sprint not found");
+          throw new Error('Sprint not found');
+        }
+        
+        console.log("Sprint data fetched:", sprintData);
         setSprint(sprintData);
         setProjectId(sprintData.project_id);
         
@@ -58,6 +69,7 @@ const SprintBoard: React.FC = () => {
           
         if (tasksError) throw tasksError;
         
+        console.log("Tasks data fetched:", tasksData || []);
         setTasks(tasksData || []);
         
         const initialColumns: {[key: string]: {title: string, taskIds: string[]}} = {
@@ -75,31 +87,41 @@ const SprintBoard: React.FC = () => {
         });
         
         setColumns(initialColumns);
-        setIsLoading(false);
         
         if (user) {
-          const { data: projectData } = await supabase
+          // Check if user is the project owner
+          const { data: projectData, error: projectError } = await supabase
             .from('projects')
             .select('owner_id')
             .eq('id', sprintData.project_id)
             .single();
             
-          if (projectData && projectData.owner_id === user.id) {
+          if (projectError) {
+            console.error("Error fetching project:", projectError);
+          } else if (projectData && projectData.owner_id === user.id) {
+            console.log("User is project owner");
             setIsOwner(true);
             setUserRole('admin');
           } else {
-            const { data: collaboratorData } = await supabase
+            // Check if user is a collaborator
+            console.log("Checking if user is a collaborator");
+            const { data: collaboratorData, error: collaboratorError } = await supabase
               .from('collaborators')
               .select('role')
               .eq('project_id', sprintData.project_id)
               .eq('user_id', user.id)
               .single();
               
-            if (collaboratorData) {
+            if (collaboratorError) {
+              console.error("Error checking collaborator status:", collaboratorError);
+            } else if (collaboratorData) {
+              console.log("User is a collaborator with role:", collaboratorData.role);
               setUserRole(collaboratorData.role as ProjectRole);
             }
           }
         }
+        
+        setIsLoading(false);
       } catch (error) {
         console.error('Error fetching sprint data:', error);
         setIsLoading(false);
@@ -270,6 +292,9 @@ const SprintBoard: React.FC = () => {
     return (
       <div className="text-center py-12">
         <h2 className="text-xl font-bold mb-4">Sprint not found</h2>
+        <p className="text-scrum-text-secondary mb-4">
+          Either the sprint doesn't exist or you don't have access to it.
+        </p>
         <button
           onClick={() => navigate(-1)}
           className="scrum-button"
@@ -636,4 +661,3 @@ const NewTaskForm: React.FC<{
 };
 
 export default SprintBoard;
-
