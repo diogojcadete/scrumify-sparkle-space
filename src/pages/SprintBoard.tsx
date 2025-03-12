@@ -8,6 +8,7 @@ import TaskCard from "@/components/tasks/TaskCard";
 import EditTaskModal from "@/components/tasks/EditTaskModal";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { ProjectRole } from "@/types";
 
 const SprintBoard: React.FC = () => {
   const { sprintId } = useParams<{ sprintId: string }>();
@@ -29,8 +30,10 @@ const SprintBoard: React.FC = () => {
   const [creatingTaskInColumn, setCreatingTaskInColumn] = useState<string | null>(null);
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<ProjectRole | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
   
-  // Fetch sprint data
   useEffect(() => {
     const fetchSprintData = async () => {
       if (!sprintId) return;
@@ -46,8 +49,8 @@ const SprintBoard: React.FC = () => {
         if (!sprintData) throw new Error('Sprint not found');
         
         setSprint(sprintData);
+        setProjectId(sprintData.project_id);
         
-        // Fetch tasks for this sprint
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
           .select('*')
@@ -57,7 +60,6 @@ const SprintBoard: React.FC = () => {
         
         setTasks(tasksData || []);
         
-        // Initialize columns with tasks
         const initialColumns: {[key: string]: {title: string, taskIds: string[]}} = {
           "todo": { title: "TO DO", taskIds: [] },
           "in-progress": { title: "IN PROGRESS", taskIds: [] },
@@ -74,6 +76,30 @@ const SprintBoard: React.FC = () => {
         
         setColumns(initialColumns);
         setIsLoading(false);
+        
+        if (user) {
+          const { data: projectData } = await supabase
+            .from('projects')
+            .select('owner_id')
+            .eq('id', sprintData.project_id)
+            .single();
+            
+          if (projectData && projectData.owner_id === user.id) {
+            setIsOwner(true);
+            setUserRole('admin');
+          } else {
+            const { data: collaboratorData } = await supabase
+              .from('collaborators')
+              .select('role')
+              .eq('project_id', sprintData.project_id)
+              .eq('user_id', user.id)
+              .single();
+              
+            if (collaboratorData) {
+              setUserRole(collaboratorData.role as ProjectRole);
+            }
+          }
+        }
       } catch (error) {
         console.error('Error fetching sprint data:', error);
         setIsLoading(false);
@@ -81,7 +107,7 @@ const SprintBoard: React.FC = () => {
     };
     
     fetchSprintData();
-  }, [sprintId]);
+  }, [sprintId, user]);
 
   const handleDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
@@ -230,6 +256,8 @@ const SprintBoard: React.FC = () => {
     }
   };
   
+  const canAddTasks = isOwner || userRole === 'admin' || userRole === 'member';
+  
   if (isLoading) {
     return (
       <div className="text-center py-12">
@@ -260,6 +288,7 @@ const SprintBoard: React.FC = () => {
         sprint={sprint}
         onCompleteSprint={handleCompleteSprint}
         allTasksCompleted={allTasksCompleted}
+        canComplete={isOwner || userRole === 'admin'}
       />
       
       <div className="flex items-center justify-between mb-4 mt-8">
@@ -282,7 +311,7 @@ const SprintBoard: React.FC = () => {
                 <div className="bg-scrum-card border border-scrum-border rounded-md h-full flex flex-col">
                   <div className="flex items-center justify-between p-3 border-b border-scrum-border">
                     <h4 className="font-medium text-sm">{column.title}</h4>
-                    {sprint.status !== "completed" && (
+                    {sprint.status !== "completed" && canAddTasks && (
                       <button
                         onClick={() => handleCreateTaskInColumn(columnId)}
                         className="text-scrum-text-secondary hover:text-white transition-colors"
@@ -293,7 +322,7 @@ const SprintBoard: React.FC = () => {
                     )}
                   </div>
                   
-                  <Droppable droppableId={columnId} isDropDisabled={sprint.status === "completed"}>
+                  <Droppable droppableId={columnId} isDropDisabled={sprint.status === "completed" || userRole === 'viewer'}>
                     {(provided, snapshot) => (
                       <div
                         ref={provided.innerRef}
@@ -306,7 +335,7 @@ const SprintBoard: React.FC = () => {
                               key={task.id}
                               draggableId={task.id}
                               index={index}
-                              isDragDisabled={sprint.status === "completed"}
+                              isDragDisabled={sprint.status === "completed" || userRole === 'viewer'}
                             >
                               {(provided, snapshot) => (
                                 <div
@@ -317,7 +346,7 @@ const SprintBoard: React.FC = () => {
                                 >
                                   <TaskCard
                                     task={task}
-                                    onEdit={() => setEditingTask(task.id)}
+                                    onEdit={canAddTasks ? () => setEditingTask(task.id) : undefined}
                                     isSprintCompleted={sprint.status === "completed"}
                                   />
                                 </div>
@@ -354,6 +383,7 @@ const SprintBoard: React.FC = () => {
           <div className="bg-scrum-card border border-scrum-border rounded-lg p-6 w-full max-w-lg animate-fade-up">
             <NewTaskForm 
               sprintId={sprint.id}
+              projectId={projectId || ''}
               initialStatus={creatingTaskInColumn}
               onClose={() => setCreatingTaskInColumn(null)}
             />
@@ -399,20 +429,22 @@ interface SprintHeaderProps {
   sprint: {
     id: string;
     title: string;
-    description: string;
-    projectId: string;
-    startDate: string;
-    endDate: string;
+    description?: string;
+    project_id: string;
+    start_date: string;
+    end_date: string;
     status: 'planned' | 'in-progress' | 'completed';
   };
   onCompleteSprint: () => void;
   allTasksCompleted: boolean;
+  canComplete: boolean;
 }
 
 const SprintHeader: React.FC<SprintHeaderProps> = ({ 
   sprint, 
   onCompleteSprint,
-  allTasksCompleted
+  allTasksCompleted,
+  canComplete
 }) => {
   const formatDateRange = (start: string, end: string) => {
     const startDate = new Date(start);
@@ -426,12 +458,12 @@ const SprintHeader: React.FC<SprintHeaderProps> = ({
       <div>
         <h1 className="font-bold text-xl">{sprint.title}</h1>
         <div className="text-sm text-scrum-text-secondary">
-          {formatDateRange(sprint.startDate, sprint.endDate)}
+          {formatDateRange(sprint.start_date, sprint.end_date)}
         </div>
       </div>
       
       <div>
-        {sprint.status !== "completed" && (
+        {sprint.status !== "completed" && canComplete && (
           <button
             onClick={onCompleteSprint}
             className={`flex items-center gap-1 ${allTasksCompleted ? 'scrum-button-success' : 'scrum-button-warning'}`}
@@ -447,9 +479,10 @@ const SprintHeader: React.FC<SprintHeaderProps> = ({
 
 const NewTaskForm: React.FC<{
   sprintId: string;
+  projectId: string;
   initialStatus: string;
   onClose: () => void;
-}> = ({ sprintId, initialStatus, onClose }) => {
+}> = ({ sprintId, projectId, initialStatus, onClose }) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "">("");
@@ -603,3 +636,4 @@ const NewTaskForm: React.FC<{
 };
 
 export default SprintBoard;
+
