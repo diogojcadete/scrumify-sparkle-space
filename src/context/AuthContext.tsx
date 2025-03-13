@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { User, ProjectRole } from "@/types";
 import { supabase } from "@/lib/supabase";
@@ -9,6 +10,8 @@ interface AuthContextType {
   isLoading: boolean;
   isOwner: boolean;
   userRole: ProjectRole | null;
+  setIsOwner: (isOwner: boolean) => void;
+  setUserRole: (role: ProjectRole | null) => void;
   login: (emailOrUsername: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -20,6 +23,8 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isOwner: false,
   userRole: null,
+  setIsOwner: () => {},
+  setUserRole: () => {},
   login: async () => {},
   register: async () => {},
   logout: () => {},
@@ -127,6 +132,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         isOwner,
         userRole,
+        setIsOwner,
+        setUserRole,
         login,
         register,
         logout,
