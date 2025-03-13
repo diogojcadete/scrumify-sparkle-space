@@ -34,7 +34,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userRole, setUserRole] = useState<ProjectRole | null>(null);
 
   useEffect(() => {
-    // Check for saved user in localStorage
     const savedUser = localStorage.getItem("scrumUser");
     if (savedUser) {
       setUser(JSON.parse(savedUser));
@@ -44,7 +43,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (username: string, email: string, password: string) => {
     try {
-      // Check if email already exists
       const { data: existingEmail } = await supabase
         .from('users')
         .select('email')
@@ -55,7 +53,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Email already in use');
       }
 
-      // Check if username already exists
       const { data: existingUsername } = await supabase
         .from('users')
         .select('username')
@@ -66,7 +63,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Username already taken');
       }
 
-      // Insert new user
       const { data, error } = await supabase
         .from('users')
         .insert([{ username, email, password }])
@@ -93,7 +89,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (emailOrUsername: string, password: string) => {
     try {
-      // Try to find user by email or username
       const { data, error } = await supabase
         .from('users')
         .select('*')
