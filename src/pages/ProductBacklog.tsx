@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useProjects } from "@/context/ProjectContext";
 import { useAuth } from "@/context/AuthContext";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
-import { Plus, Send, Package, ArrowRight, Trash, Search, Filter } from "lucide-react";
+import { Plus, Send, Package, ArrowRight, Trash, Search, Filter, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import TaskCard from "@/components/tasks/TaskCard";
 import EditTaskModal from "@/components/tasks/EditTaskModal";
@@ -35,11 +35,11 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import BacklogItemForm from "./BacklogItemForm";
-import { supabase } from "@/lib/supabase";
+import { supabase, withRetry } from "@/lib/supabase";
 
 const ProductBacklog: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
-  const { getProject, getSprintsByProject } = useProjects();
+  const { getProject, getSprintsByProject, refreshProjectData } = useProjects();
   const { user, isOwner, userRole } = useAuth();
   const navigate = useNavigate();
   
@@ -49,6 +49,7 @@ const ProductBacklog: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const project = projectId ? getProject(projectId) : undefined;
   const sprints = projectId ? getSprintsByProject(projectId) : [];
@@ -67,12 +68,14 @@ const ProductBacklog: React.FC = () => {
         setIsLoading(true);
         console.log('Fetching backlog tasks for project ID:', projectId);
         
-        const { data, error } = await supabase
-          .from('tasks')
-          .select('*')
-          .eq('project_id', projectId)
-          .is('sprint_id', null)
-          .eq('status', 'backlog');
+        const { data, error } = await withRetry(async () => {
+          return await supabase
+            .from('tasks')
+            .select('*')
+            .eq('project_id', projectId)
+            .is('sprint_id', null)
+            .eq('status', 'backlog');
+        });
         
         if (error) {
           console.error('Error fetching backlog tasks:', error);
@@ -86,11 +89,41 @@ const ProductBacklog: React.FC = () => {
         console.error('Error fetching backlog tasks:', error);
         setBacklogTasks([]);
         setIsLoading(false);
+        toast.error("Failed to load backlog items. Please try refreshing.");
       }
     };
     
     fetchBacklogItems();
   }, [projectId, user]);
+  
+  const handleRefresh = async () => {
+    if (!projectId) return;
+    
+    setIsRefreshing(true);
+    try {
+      await refreshProjectData(projectId);
+      
+      // Refetch the backlog tasks specifically
+      const { data, error } = await withRetry(async () => {
+        return await supabase
+          .from('tasks')
+          .select('*')
+          .eq('project_id', projectId)
+          .is('sprint_id', null)
+          .eq('status', 'backlog');
+      });
+      
+      if (error) throw error;
+      
+      setBacklogTasks(data || []);
+      toast.success("Backlog refreshed successfully");
+    } catch (error) {
+      console.error("Error refreshing backlog:", error);
+      toast.error("Failed to refresh backlog");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
   
   const handleDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
@@ -270,15 +303,27 @@ const ProductBacklog: React.FC = () => {
           </p>
         </div>
         
-        {canAddTasks && (
+        <div className="flex items-center gap-2">
           <Button
-            onClick={() => setIsAddingTask(true)}
-            className="flex items-center gap-1"
+            onClick={handleRefresh}
+            variant="outline"
+            size="icon"
+            disabled={isRefreshing}
+            title="Refresh backlog"
           >
-            <Plus className="h-4 w-4" />
-            <span>Add Backlog Item</span>
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
-        )}
+          
+          {canAddTasks && (
+            <Button
+              onClick={() => setIsAddingTask(true)}
+              className="flex items-center gap-1"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Backlog Item</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 mb-6">

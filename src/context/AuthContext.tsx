@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { User, ProjectRole } from "@/types";
-import { supabase } from "@/lib/supabase";
+import { supabase, withRetry } from "@/lib/supabase";
 import { toast } from "sonner";
 
 interface AuthContextType {
@@ -39,40 +39,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userRole, setUserRole] = useState<ProjectRole | null>(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("scrumUser");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+    const loadUserFromStorage = () => {
+      try {
+        const savedUser = localStorage.getItem("scrumUser");
+        if (savedUser) {
+          setUser(JSON.parse(savedUser));
+        }
+      } catch (error) {
+        console.error("Error loading user from storage:", error);
+        localStorage.removeItem("scrumUser");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadUserFromStorage();
   }, []);
 
   const register = async (username: string, email: string, password: string) => {
     try {
-      const { data: existingEmail } = await supabase
-        .from('users')
-        .select('email')
-        .eq('email', email)
-        .single();
+      const { data: existingEmail } = await withRetry(async () => {
+        return await supabase
+          .from('users')
+          .select('email')
+          .eq('email', email)
+          .single();
+      });
 
       if (existingEmail) {
         throw new Error('Email already in use');
       }
 
-      const { data: existingUsername } = await supabase
-        .from('users')
-        .select('username')
-        .eq('username', username)
-        .single();
+      const { data: existingUsername } = await withRetry(async () => {
+        return await supabase
+          .from('users')
+          .select('username')
+          .eq('username', username)
+          .single();
+      });
 
       if (existingUsername) {
         throw new Error('Username already taken');
       }
 
-      const { data, error } = await supabase
-        .from('users')
-        .insert([{ username, email, password }])
-        .select()
-        .single();
+      const { data, error } = await withRetry(async () => {
+        return await supabase
+          .from('users')
+          .insert([{ username, email, password }])
+          .select()
+          .single();
+      });
 
       if (error) throw error;
 
@@ -94,12 +110,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (emailOrUsername: string, password: string) => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .or(`email.eq.${emailOrUsername},username.eq.${emailOrUsername}`)
-        .eq('password', password)
-        .single();
+      const { data, error } = await withRetry(async () => {
+        return await supabase
+          .from('users')
+          .select('*')
+          .or(`email.eq.${emailOrUsername},username.eq.${emailOrUsername}`)
+          .eq('password', password)
+          .single();
+      });
 
       if (error || !data) {
         throw new Error('Invalid credentials');
@@ -121,6 +139,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setUser(null);
+    setIsOwner(false);
+    setUserRole(null);
     localStorage.removeItem("scrumUser");
   };
 
