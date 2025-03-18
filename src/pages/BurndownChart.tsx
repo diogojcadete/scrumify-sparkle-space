@@ -1,17 +1,17 @@
-import React, { useEffect, useState } from "react";
+
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useProjects } from "@/context/ProjectContext";
 import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/lib/supabase";
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
+  Line,
   ResponsiveContainer,
+  LineChart,
 } from "recharts";
 import { format, parseISO, startOfDay, addDays, isBefore, isAfter, differenceInDays } from "date-fns";
 import { toast } from "sonner";
@@ -35,10 +35,24 @@ const BurndownChart: React.FC = () => {
   const { user } = useAuth();
   const [chartData, setChartData] = useState<BurndownDataPoint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const project = getProject(projectId || "");
+  const project = useMemo(() => getProject(projectId || ""), [projectId, getProject]);
+  
+  // Memoize sprints and tasks to avoid re-renders
+  const projectSprints = useMemo(() => 
+    projectId ? getSprintsByProject(projectId) : [],
+    [projectId, getSprintsByProject, sprints]
+  );
+  
+  const allSprintTasks = useMemo(() => {
+    const result: Task[] = [];
+    projectSprints.forEach(sprint => {
+      const sprintTasks = getTasksBySprint(sprint.id);
+      result.push(...sprintTasks);
+    });
+    return result;
+  }, [projectSprints, getTasksBySprint, tasks]);
   
   useEffect(() => {
     const fetchBurndownData = async () => {
@@ -47,12 +61,8 @@ const BurndownChart: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Always generate burndown data to keep it current with task status
         const burndownData = await generateBurndownData();
         setChartData(burndownData);
-        
-        // Save data in background, but don't block UI
-        saveBurndownDataSafely(burndownData);
       } catch (error) {
         console.error("Error generating burndown data:", error);
         setError("Failed to load burndown chart data");
@@ -63,66 +73,13 @@ const BurndownChart: React.FC = () => {
     };
     
     fetchBurndownData();
-  }, [projectId, user, tasks, sprints]);
-  
-  // New function for safer data saving with debounce
-  const saveBurndownDataSafely = async (data: BurndownDataPoint[]) => {
-    if (isSaving || !projectId || !user) return;
-    
-    try {
-      setIsSaving(true);
-      
-      // First clear existing data
-      const { error: deleteError } = await supabase
-        .from('burndown_data')
-        .delete()
-        .eq('project_id', projectId);
-        
-      if (deleteError) {
-        console.log("Non-blocking delete error:", deleteError);
-        // Continue anyway
-      }
-      
-      // Wait a moment before inserting
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Insert data one by one with small delays to avoid overwhelming the DB
-      for (const item of data) {
-        const { error: insertError } = await supabase
-          .from('burndown_data')
-          .insert({
-            project_id: projectId,
-            user_id: user.id,
-            date: item.date,
-            ideal_points: item.ideal,
-            actual_points: item.actual
-          });
-          
-        if (insertError) {
-          console.log("Non-blocking insert error:", insertError);
-          // Don't break the loop, continue with other items
-        }
-        
-        // Small delay between inserts
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-    } catch (error) {
-      console.log("Background save error (non-blocking):", error);
-      // Don't show errors to user for background operations
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  }, [projectId, user, allSprintTasks]);
   
   const generateBurndownData = async (): Promise<BurndownDataPoint[]> => {
     const data: BurndownDataPoint[] = [];
     const today = startOfDay(new Date());
     
-    // Get all sprints for the project
-    const projectSprints = getSprintsByProject(projectId || "");
-    
     if (projectSprints.length === 0) {
-      // If no sprints exist, use default 21-day range
       return generateDefaultTimeframe(today, 21);
     }
     
@@ -143,7 +100,6 @@ const BurndownChart: React.FC = () => {
       }
     }
     
-    // Ensure we have valid dates
     if (!earliestStartDate || !latestEndDate) {
       return generateDefaultTimeframe(today, 21);
     }
@@ -154,19 +110,11 @@ const BurndownChart: React.FC = () => {
     // Ensure we have at least 7 days for visibility
     const timeframeDays = Math.max(daysInProject, 7);
     
-    // Get all tasks across all sprints
-    const allTasks: Task[] = [];
-    for (const sprint of projectSprints) {
-      const sprintTasks = getTasksBySprint(sprint.id);
-      allTasks.push(...sprintTasks);
-    }
-    
     // Calculate total story points across all tasks
-    const totalStoryPoints = allTasks.reduce((sum, task) => {
+    const totalStoryPoints = allSprintTasks.reduce((sum, task) => {
       return sum + (task.storyPoints || 0);
     }, 0);
     
-    // If no story points, set a default value
     if (totalStoryPoints === 0) {
       return generateDefaultTimeframe(today, timeframeDays);
     }
@@ -175,7 +123,7 @@ const BurndownChart: React.FC = () => {
     const completedTasksByDate = new Map<string, number>();
     
     // Populate the map with completed tasks
-    allTasks.forEach(task => {
+    allSprintTasks.forEach(task => {
       if (task.status === "done" && task.updatedAt && task.storyPoints) {
         const completionDate = task.updatedAt.split('T')[0];
         const currentPoints = completedTasksByDate.get(completionDate) || 0;
@@ -254,6 +202,17 @@ const BurndownChart: React.FC = () => {
     );
   }
   
+  const chartConfig = {
+    ideal: {
+      label: "Ideal Burndown",
+      color: "#8884d8"
+    },
+    actual: {
+      label: "Actual Burndown",
+      color: "#82ca9d"
+    }
+  };
+  
   return (
     <div>
       <div className="scrum-card mb-6">
@@ -264,72 +223,61 @@ const BurndownChart: React.FC = () => {
       </div>
       
       <div className="scrum-card h-[500px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ChartContainer config={chartConfig} className="w-full h-full">
           <LineChart
-            data={chartData}
             margin={{
               top: 20,
               right: 30,
               left: 20,
               bottom: 10,
             }}
+            data={chartData}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+            <CartesianGrid strokeDasharray="3 3" />
             <XAxis
               dataKey="formattedDate"
-              stroke="#777"
-              tick={{ fill: "#777" }}
-              axisLine={{ stroke: "#444" }}
+              stroke="var(--color-muted-foreground)"
             />
             <YAxis
-              label={{ value: "Story Points Remaining", angle: -90, position: "insideLeft", fill: "#777" }}
-              stroke="#777"
-              tick={{ fill: "#777" }}
-              axisLine={{ stroke: "#444" }}
+              label={{ 
+                value: "Story Points Remaining", 
+                angle: -90, 
+                position: "insideLeft"
+              }}
+              stroke="var(--color-muted-foreground)"
             />
-            <Tooltip
+            <ChartTooltip
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   return (
-                    <div className="bg-scrum-card border border-scrum-border p-3 rounded">
-                      <p className="font-medium">{payload[0].payload.formattedDate}</p>
-                      <div className="mt-2 space-y-1">
-                        <p className="flex items-center text-sm">
-                          <span className="h-2 w-2 rounded-full bg-[#8884d8] mr-2"></span>
-                          <span>Ideal: {payload[0].value} points</span>
-                        </p>
-                        <p className="flex items-center text-sm">
-                          <span className="h-2 w-2 rounded-full bg-[#82ca9d] mr-2"></span>
-                          <span>Actual: {payload[1].value} points</span>
-                        </p>
-                      </div>
-                    </div>
+                    <ChartTooltipContent
+                      payload={payload}
+                      active={active}
+                    />
                   );
                 }
                 return null;
               }}
             />
-            <Legend
-              wrapperStyle={{ color: "#fff" }}
-            />
+            <Legend />
             <Line
               type="monotone"
               dataKey="ideal"
-              stroke="#8884d8"
-              name="Ideal Burndown"
-              dot={false}
+              name="ideal"
+              stroke="var(--color-ideal)"
               activeDot={{ r: 8 }}
+              isAnimationActive={false}
             />
             <Line
               type="monotone"
               dataKey="actual"
-              stroke="#82ca9d"
-              name="Actual Burndown"
-              dot={false}
+              name="actual"
+              stroke="var(--color-actual)"
               activeDot={{ r: 8 }}
+              isAnimationActive={false}
             />
           </LineChart>
-        </ResponsiveContainer>
+        </ChartContainer>
       </div>
       
       <div className="scrum-card mt-6 p-4">
