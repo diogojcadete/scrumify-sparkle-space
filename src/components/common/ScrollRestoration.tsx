@@ -9,6 +9,7 @@ interface ScrollPositions {
 const ScrollRestoration: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const [scrollPositions, setScrollPositions] = useState<ScrollPositions>({});
+  const [initialLoad, setInitialLoad] = useState(true);
 
   // Save scroll position before navigating away
   useEffect(() => {
@@ -33,21 +34,28 @@ const ScrollRestoration: React.FC<{ children: React.ReactNode }> = ({ children }
     const currentPath = location.pathname + location.search;
     const savedPosition = scrollPositions[currentPath];
     
+    // Don't scroll on initial page load
+    if (initialLoad) {
+      setInitialLoad(false);
+      return;
+    }
+    
     // Use requestAnimationFrame to ensure DOM has updated before scrolling
     const timeoutId = setTimeout(() => {
       if (savedPosition !== undefined) {
         window.scrollTo(0, savedPosition);
       } else {
         // Only scroll to top for new paths we haven't visited
-        // This prevents scrolling to top when going back in history
+        // and only when it's not an initial load
         if (!Object.keys(scrollPositions).includes(currentPath)) {
-          window.scrollTo(0, 0);
+          // We don't automatically scroll to top for new pages anymore
+          // window.scrollTo(0, 0);
         }
       }
     }, 0);
     
     return () => clearTimeout(timeoutId);
-  }, [location.pathname, location.search, scrollPositions]);
+  }, [location.pathname, location.search, scrollPositions, initialLoad]);
 
   return <>{children}</>;
 };
