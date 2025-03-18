@@ -12,6 +12,7 @@ const ScrollRestoration: React.FC<{ children: React.ReactNode }> = ({ children }
   const [initialLoad, setInitialLoad] = useState(true);
   const isManualScrollRef = useRef(false);
   const pathRef = useRef(location.pathname + location.search);
+  const restorationDoneRef = useRef(false);
 
   // Save scroll position before navigating away
   useEffect(() => {
@@ -25,7 +26,7 @@ const ScrollRestoration: React.FC<{ children: React.ReactNode }> = ({ children }
       }));
     };
 
-    // Save scroll position on scroll
+    // Use passive event listener for better performance
     window.addEventListener('scroll', handleScroll, { passive: true });
     
     return () => {
@@ -33,44 +34,55 @@ const ScrollRestoration: React.FC<{ children: React.ReactNode }> = ({ children }
     };
   }, [location]);
 
-  // Track path changes
+  // Reset restoration flag when route changes
   useEffect(() => {
     const currentPath = location.pathname + location.search;
     
-    // If path changed, mark it for restoration
     if (pathRef.current !== currentPath) {
       pathRef.current = currentPath;
+      restorationDoneRef.current = false;
     }
-    
   }, [location.pathname, location.search]);
 
   // Restore scroll position when route changes
   useEffect(() => {
-    const currentPath = location.pathname + location.search;
-    const savedPosition = scrollPositions[currentPath];
-    
     // Don't do anything on initial page load
     if (initialLoad) {
       setInitialLoad(false);
       return;
     }
     
-    // Use requestAnimationFrame to ensure DOM has updated before scrolling
-    const timeoutId = setTimeout(() => {
-      if (savedPosition !== undefined) {
+    const currentPath = location.pathname + location.search;
+    const savedPosition = scrollPositions[currentPath];
+    
+    // Skip restoration if already done for this path or if scrolling to an anchor 
+    if (restorationDoneRef.current || location.hash) {
+      return;
+    }
+    
+    if (savedPosition !== undefined) {
+      // Delay scroll restoration to ensure DOM is fully updated
+      const timeoutId = setTimeout(() => {
         isManualScrollRef.current = true;
-        window.scrollTo(0, savedPosition);
+        window.scrollTo({
+          top: savedPosition,
+          behavior: 'auto' // Use instant scroll for restoration
+        });
+        
+        // Mark this restoration as done
+        restorationDoneRef.current = true;
         
         // Reset manual scroll flag after a short delay
         setTimeout(() => {
           isManualScrollRef.current = false;
         }, 100);
-      }
-      // We've completely disabled automatic scroll to top for new pages
-    }, 50); // Slight delay to ensure DOM is ready
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
     
-    return () => clearTimeout(timeoutId);
-  }, [location.pathname, location.search, scrollPositions, initialLoad]);
+    // We don't auto-scroll to top for new pages
+  }, [location.pathname, location.search, location.hash, scrollPositions, initialLoad]);
 
   return <>{children}</>;
 };

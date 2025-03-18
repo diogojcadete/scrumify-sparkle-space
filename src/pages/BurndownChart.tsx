@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useProjects } from "@/context/ProjectContext";
 import { useAuth } from "@/context/AuthContext";
@@ -54,28 +54,8 @@ const BurndownChart: React.FC = () => {
     return result;
   }, [projectSprints, getTasksBySprint, tasks]);
   
-  useEffect(() => {
-    const fetchBurndownData = async () => {
-      if (!projectId || !user) return;
-      
-      setIsLoading(true);
-      setError(null);
-      try {
-        const burndownData = await generateBurndownData();
-        setChartData(burndownData);
-      } catch (error) {
-        console.error("Error generating burndown data:", error);
-        setError("Failed to load burndown chart data");
-        toast.error("Failed to load burndown chart data");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchBurndownData();
-  }, [projectId, user, allSprintTasks]);
-  
-  const generateBurndownData = async (): Promise<BurndownDataPoint[]> => {
+  // Generate burndown data with stable function reference
+  const generateBurndownData = useCallback((): BurndownDataPoint[] => {
     const data: BurndownDataPoint[] = [];
     const today = startOfDay(new Date());
     
@@ -159,9 +139,9 @@ const BurndownChart: React.FC = () => {
     }
     
     return data;
-  };
+  }, [projectSprints, allSprintTasks]);
   
-  const generateDefaultTimeframe = (startDate: Date, days: number): BurndownDataPoint[] => {
+  const generateDefaultTimeframe = useCallback((startDate: Date, days: number): BurndownDataPoint[] => {
     const data: BurndownDataPoint[] = [];
     const totalPoints = 100;
     const pointsPerDay = totalPoints / days;
@@ -180,7 +160,38 @@ const BurndownChart: React.FC = () => {
     }
     
     return data;
-  };
+  }, []);
+  
+  // Fetch data only when necessary components change
+  useEffect(() => {
+    if (!projectId || !user) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const burndownData = generateBurndownData();
+      setChartData(burndownData);
+    } catch (error) {
+      console.error("Error generating burndown data:", error);
+      setError("Failed to load burndown chart data");
+      toast.error("Failed to load burndown chart data");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [projectId, user, generateBurndownData]);
+  
+  // Memoize chart configuration to prevent unnecessary re-renders
+  const chartConfig = useMemo(() => ({
+    ideal: {
+      label: "Ideal Burndown",
+      color: "#8884d8"
+    },
+    actual: {
+      label: "Actual Burndown",
+      color: "#82ca9d"
+    }
+  }), []);
   
   if (isLoading) {
     return (
@@ -202,19 +213,8 @@ const BurndownChart: React.FC = () => {
     );
   }
   
-  const chartConfig = {
-    ideal: {
-      label: "Ideal Burndown",
-      color: "#8884d8"
-    },
-    actual: {
-      label: "Actual Burndown",
-      color: "#82ca9d"
-    }
-  };
-  
   return (
-    <div>
+    <div className="burndown-chart-container">
       <div className="scrum-card mb-6">
         <h2 className="text-xl font-bold mb-2">Project Burndown Chart</h2>
         <p className="text-scrum-text-secondary">
