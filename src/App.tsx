@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ProjectProvider } from "@/context/ProjectContext";
 
@@ -69,34 +69,32 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter>
-            <Routes>
-              {/* Public routes */}
-              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-              <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-              
-              {/* Protected routes */}
-              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
-              
-              {/* Project routes */}
-              <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectLayout /></ProtectedRoute>}>
-                <Route index element={<ProjectDetail />} />
-                <Route path="backlog" element={<ProductBacklog />} />
-                <Route path="timeline" element={<ProjectTimeline />} />
-                <Route path="burndown" element={<BurndownChart />} />
-                <Route path="collaborators" element={<ProjectCollaborators />} />
-                <Route path="sprint/:sprintId" element={<SprintBoard />} />
-                <Route path="sprint/:sprintId/edit" element={<EditSprint />} />
-              </Route>
-              
-              {/* Sprint routes */}
-              <Route path="/sprints/:sprintId" element={<ProtectedRoute><SprintBoard /></ProtectedRoute>} />
-              
-              {/* 404 route */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+            <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+            
+            {/* Protected routes */}
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
+            
+            {/* Project routes */}
+            <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectLayout /></ProtectedRoute>}>
+              <Route index element={<ProjectDetail />} />
+              <Route path="backlog" element={<ProductBacklog />} />
+              <Route path="timeline" element={<ProjectTimeline />} />
+              <Route path="burndown" element={<BurndownChart />} />
+              <Route path="collaborators" element={<ProjectCollaborators />} />
+              <Route path="sprint/:sprintId" element={<SprintBoard />} />
+              <Route path="sprint/:sprintId/edit" element={<EditSprint />} />
+            </Route>
+            
+            {/* Sprint routes */}
+            <Route path="/sprints/:sprintId" element={<ProtectedRoute><SprintBoard /></ProtectedRoute>} />
+            
+            {/* 404 route */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
         </TooltipProvider>
       </ProjectProvider>
     </AuthProvider>
