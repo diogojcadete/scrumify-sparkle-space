@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { User, KeyRound, Mail, Moon, Sun } from "lucide-react";
+import { User, KeyRound, Mail, Moon, Sun, ArrowLeft } from "lucide-react";
 
 const usernameSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters").max(50)
@@ -68,6 +68,10 @@ const UserSettings: React.FC = () => {
     }
   });
 
+  const handleGoBack = () => {
+    navigate(-1);
+  };
+
   const onSubmitUsername = async (data: UsernameFormValues) => {
     setIsUpdatingUsername(true);
     try {
@@ -111,9 +115,19 @@ const UserSettings: React.FC = () => {
 
   return (
     <div className="container max-w-3xl pt-20 pb-10">
-      <div className="flex items-center mb-8">
-        <User className="h-8 w-8 mr-2 text-scrum-accent" />
-        <h1 className="text-2xl font-bold">User Settings</h1>
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-2">
+          <User className="h-8 w-8 mr-2 text-scrum-accent" />
+          <h1 className="text-2xl font-bold">User Settings</h1>
+        </div>
+        <Button 
+          onClick={handleGoBack} 
+          variant="outline" 
+          className="flex items-center gap-2 border-scrum-border hover:bg-scrum-accent hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
       </div>
 
       <div className="space-y-8">

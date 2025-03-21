@@ -26,14 +26,14 @@
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
     
-    /* Scrum-specific light mode */
-    --scrum-background: 0 0% 98%;
+    /* Scrum-specific light mode with improved contrast */
+    --scrum-background: 0 0% 96%;
     --scrum-card: 0 0% 100%;
-    --scrum-border: 240 6% 90%;
-    --scrum-accent: 210 100% 50%;
-    --scrum-highlight: 210 100% 60%;
-    --scrum-text-primary: 240 10% 3.9%;
-    --scrum-text-secondary: 240 3.8% 46.1%;
+    --scrum-border: 240 6% 80%;
+    --scrum-accent: 210 100% 45%;
+    --scrum-highlight: 210 100% 55%;
+    --scrum-text-primary: 240 10% 10%;
+    --scrum-text-secondary: 240 3.8% 40%;
   }
 
   .dark {
